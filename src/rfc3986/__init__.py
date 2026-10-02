@@ -25,9 +25,13 @@ from .api import URIReference
 from .api import iri_reference
 from .api import is_valid_uri
 from .api import normalize_uri
+from .api import parse_uri_reference
+from .api import strict_uri_reference
 from .api import uri_reference
 from .api import urlparse
 from .parseresult import ParseResult
+from .strict import ParseIssue
+from .strict import StrictParseError
 
 __title__ = "rfc3986"
 __author__ = "Ian Stapleton Cordasco"
@@ -42,9 +46,13 @@ __all__ = (
     "IRIReference",
     "is_valid_uri",
     "normalize_uri",
+    "parse_uri_reference",
+    "strict_uri_reference",
     "uri_reference",
     "iri_reference",
     "urlparse",
+    "ParseIssue",
+    "StrictParseError",
     "__title__",
     "__author__",
     "__author_email__",

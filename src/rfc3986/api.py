@@ -22,6 +22,8 @@ import typing as t
 
 from .iri import IRIReference
 from .parseresult import ParseResult
+from .strict import parse_uri_reference
+from .strict import strict_uri_reference as _strict_uri_reference
 from .uri import URIReference
 
 
@@ -40,6 +42,30 @@ def uri_reference(
     :rtype: :class:`URIReference`
     """
     return URIReference.from_string(uri, encoding)
+
+
+def strict_uri_reference(
+    uri: t.Union[str, bytes],
+    encoding: str = "utf-8",
+) -> URIReference:
+    """Parse a URI reference strictly, without automatic percent-encoding.
+
+    Unlike :func:`uri_reference`, the original input is inspected before any
+    encoding is performed. Illegal percent escapes, control characters,
+    non-ASCII characters, and malformed authorities are reported together
+    with the offending component and character range by raising
+    :class:`~rfc3986.strict.StrictParseError`.
+
+    Use :func:`parse_uri_reference` instead when you want the collected
+    problems without an exception.
+
+    :param str uri: The URI reference which needs to be parsed strictly.
+    :param str encoding: The encoding of the string provided
+    :returns: A parsed URI
+    :rtype: :class:`URIReference`
+    :raises rfc3986.strict.StrictParseError: If the URI reference is invalid.
+    """
+    return _strict_uri_reference(uri, encoding)
 
 
 def iri_reference(

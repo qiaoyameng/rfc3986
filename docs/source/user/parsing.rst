@@ -145,3 +145,37 @@ Somewhat better, but not much.
     The maintainers of :mod:`rfc3986` are working to discern better ways to
     parse these less common URIs in a reasonable and sensible way without
     losing conformance to the RFC.
+
+Strict Parsing
+==============
+
+The lenient :meth:`rfc3986.api.uri_reference` interface automatically
+percent-encodes characters it cannot store, which is convenient but hides the
+location of problems in the original input. For cases where you need to know
+*which segment* of a URI is wrong, use
+:meth:`rfc3986.api.strict_uri_reference` (or
+:func:`rfc3986.strict.parse_uri_reference`, which returns the problems
+instead of raising)::
+
+    >>> from rfc3986 import strict
+    >>> issues = strict.parse_uri_reference(
+    ...     "http://example.com:99bad/%\u4e2d"
+    ... )
+    >>> for issue in issues:
+    ...     print(issue)
+    invalid-port in port[19:24] (characters): '99bad'
+    invalid-percent-encoding in path[25:27] (characters): '%\u4e2d'
+    non-ascii-character in path[26:27] (characters): '\u4e2d'
+
+Each :class:`rfc3986.strict.ParseIssue` names the offending ``component``,
+the ``reason``, and a half-open range (``start``/``end``) measured against
+the original input. Empty components remain distinct from missing
+components, and ranges are not moved by normalization. When ``bytes`` input
+cannot be decoded, the issue is reported with ``unit="byte"`` and byte
+offsets.
+
+Legal percent-encoded reserved characters such as ``%2F`` are *not*
+reported::
+
+    >>> strict.parse_uri_reference("http://example.com/a%2Fb")
+    []

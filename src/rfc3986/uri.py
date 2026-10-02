@@ -170,3 +170,24 @@ class URIReference(misc.URIReferenceBase, URIMixin):
             normalizers.encode_component(split_uri["fragment"], encoding),
             encoding,
         )
+
+    @classmethod
+    def from_strict_string(
+        cls,
+        uri_string: t.Union[str, bytes],
+        encoding: str = "utf-8",
+    ) -> _Self:
+        """Parse a URI reference strictly, without automatic encoding.
+
+        This delegates to :func:`rfc3986.strict.strict_uri_reference` and
+        raises :class:`rfc3986.strict.StrictParseError` describing the
+        component and original character range of every problem found.
+
+        :param str uri_string: URI reference to be parsed strictly.
+        :param str encoding: The encoding of the string provided
+        :returns: :class:`URIReference` or subclass thereof
+        :rtype: URIReference
+        """
+        from .strict import strict_uri_reference
+
+        return strict_uri_reference(uri_string, encoding)

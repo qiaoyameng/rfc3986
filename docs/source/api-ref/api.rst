@@ -6,4 +6,8 @@
 
 .. autofunction:: rfc3986.api.uri_reference
 
+.. autofunction:: rfc3986.api.strict_uri_reference
+
+.. autofunction:: rfc3986.strict.parse_uri_reference
+
 .. autofunction:: rfc3986.api.normalize_uri

@@ -59,6 +59,16 @@ def test_iri_equality_special_cases():
         rfc3986.iri_reference("http://ẞ.com") == 1
 
 
+def test_iri_relative_to_roundtrip():
+    target = rfc3986.iri_reference("http://example.com/α/β")
+    base = rfc3986.iri_reference("http://example.com/α/γ?old=1")
+
+    relative = target.relative_to(base)
+
+    assert relative.unsplit() == "%CE%B2"
+    assert tuple(relative.resolve_with(base, strict=True)) == tuple(target)
+
+
 @requires_idna
 @pytest.mark.parametrize(
     "iri",

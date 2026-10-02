@@ -387,6 +387,209 @@ class TestURIReferencesResolve:
         assert T1 == B
 
 
+@pytest.mark.parametrize(
+    ("target", "base", "expected"),
+    [
+        (
+            "http://example.com/a/b/c",
+            "http://example.com/a/d",
+            "b/c",
+        ),
+        (
+            "http://example.com/a/c",
+            "http://example.com/a/b/d",
+            "../c",
+        ),
+        (
+            "http://example.com/a/file",
+            "http://example.com/a/directory/",
+            "../file",
+        ),
+        (
+            "http://example.com/a/directory/",
+            "http://example.com/a/file",
+            "directory/",
+        ),
+        (
+            "http://example.com/a/",
+            "http://example.com/a",
+            "a/",
+        ),
+        (
+            "http://example.com/a",
+            "http://example.com/a/",
+            "../a",
+        ),
+        (
+            "http://example.com/a/",
+            "http://example.com/a/?old=1",
+            ".",
+        ),
+        (
+            "http://example.com/a/file",
+            "http://example.com/a/file",
+            "file",
+        ),
+        (
+            "http://example.com/a/file",
+            "http://example.com/a/file?old=1",
+            "file",
+        ),
+        (
+            "http://example.com/a/file?",
+            "http://example.com/a/file?old=1",
+            "file?",
+        ),
+        (
+            "http://example.com/a/file#",
+            "http://example.com/a/file",
+            "file#",
+        ),
+        (
+            "http://example.com/a/b/./c/../d",
+            "http://example.com/a/x",
+            "b/d",
+        ),
+        (
+            "http://example.com/a/foo%2Fbar",
+            "http://example.com/a/baz",
+            "foo%2Fbar",
+        ),
+        (
+            "http://example.com/a/foo:bar",
+            "http://example.com/a/baz",
+            "./foo:bar",
+        ),
+    ],
+)
+def test_relative_to_path_references(target, base, expected):
+    target_ref = URIReference.from_string(target)
+    base_ref = URIReference.from_string(base)
+
+    relative = target_ref.relative_to(base_ref)
+
+    assert relative.unsplit() == expected
+    assert tuple(relative.resolve_with(base_ref, strict=True)) == tuple(
+        target_ref.normalize()
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "base", "expected"),
+    [
+        ("http://example.com/a", "http://example.com", "/a"),
+        ("http://example.com/a?x=1", "http://example.com", "/a?x=1"),
+        ("http://example.com/a#f", "http://example.com", "/a#f"),
+        ("http://example.com/", "http://example.com?x=1", "/"),
+        ("http://example.com", "http://example.com", ""),
+        ("http://example.com?", "http://example.com?x=1", "?"),
+        ("http://example.com#", "http://example.com", "#"),
+        (
+            "http://example.com#",
+            "http://example.com?x=1",
+            "http://example.com#",
+        ),
+        (
+            "http://example.com?x=1",
+            "http://example.com/b?x=1",
+            "http://example.com?x=1",
+        ),
+        (
+            "http://example.com#f",
+            "http://example.com/b",
+            "http://example.com#f",
+        ),
+    ],
+)
+def test_relative_to_pathless_targets(target, base, expected):
+    target_ref = URIReference.from_string(target)
+    base_ref = URIReference.from_string(base)
+
+    relative = target_ref.relative_to(base_ref)
+
+    assert relative.unsplit() == expected
+    assert tuple(relative.resolve_with(base_ref, strict=True)) == tuple(
+        target_ref.normalize()
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "base", "expected"),
+    [
+        (
+            "http://other.example.com/a",
+            "http://example.com/a",
+            "//other.example.com/a",
+        ),
+        (
+            "http://OTHER.EXAMPLE.COM/a",
+            "http://other.example.com/b",
+            "//OTHER.EXAMPLE.COM/a",
+        ),
+        (
+            "https://example.com/a",
+            "http://example.com/b",
+            "https://example.com/a",
+        ),
+    ],
+)
+def test_relative_to_different_components(target, base, expected):
+    target_ref = URIReference.from_string(target)
+    base_ref = URIReference.from_string(base)
+
+    relative = target_ref.relative_to(base_ref)
+
+    assert relative.unsplit() == expected
+    assert relative.resolve_with(base_ref, strict=True) == target_ref
+
+
+def test_relative_to_non_strict_scheme_casing():
+    target_ref = URIReference.from_string("HTTP://example.com/a")
+    base_ref = URIReference.from_string("http://example.com/b")
+
+    relative = target_ref.relative_to(base_ref, strict=False)
+
+    assert relative.unsplit() == "a"
+    assert tuple(relative.resolve_with(base_ref, strict=False)) == tuple(
+        target_ref.normalize()
+    )
+
+
+def test_relative_to_non_strict_authority_casing():
+    target_ref = URIReference.from_string("http://OTHER.EXAMPLE.COM/a")
+    base_ref = URIReference.from_string("http://other.example.com/b")
+
+    relative = target_ref.relative_to(base_ref, strict=False)
+
+    assert relative.unsplit() == "a"
+    assert tuple(relative.resolve_with(base_ref, strict=False)) == tuple(
+        target_ref.normalize()
+    )
+
+
+def test_relative_to_rootless_path_without_slash_returns_absolute():
+    target_ref = URIReference.from_string("mailto:a")
+    base_ref = URIReference.from_string("mailto:a")
+
+    relative = target_ref.relative_to(base_ref)
+
+    assert relative.unsplit() == "mailto:a"
+    assert tuple(relative.resolve_with(base_ref, strict=True)) == tuple(
+        target_ref
+    )
+
+
+def test_relative_to_rejects_missing_scheme():
+    target_ref = URIReference.from_string("/a")
+    base_ref = URIReference.from_string("http://example.com/b")
+
+    with pytest.raises(ResolutionError):
+        target_ref.relative_to(base_ref)
+
+    with pytest.raises(ResolutionError):
+        base_ref.relative_to("/b")
+
+
 def test_empty_querystrings_persist():
     url = "https://httpbin.org/get?"
     ref = URIReference.from_string(url)

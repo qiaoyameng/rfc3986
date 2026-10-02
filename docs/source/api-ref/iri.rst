@@ -12,6 +12,8 @@
 
 .. automethod:: rfc3986.iri.IRIReference.resolve_with
 
+.. automethod:: rfc3986.iri.IRIReference.relative_to
+
 .. automethod:: rfc3986.iri.IRIReference.copy_with
 
 .. automethod:: rfc3986.iri.IRIReference.is_absolute

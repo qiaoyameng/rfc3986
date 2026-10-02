@@ -304,7 +304,7 @@ class URIMixin:
 
         # This is optional per
         # http://tools.ietf.org/html/rfc3986#section-5.2.1
-        base_uri = base_uri.normalize()
+        base_uri = base_uri._normalized_reference()
 
         # The reference we're resolving
         resolving = self
@@ -349,6 +349,140 @@ class URIMixin:
                         query=resolving.query,
                     )
         return target
+
+    def relative_to(
+        self,
+        base_uri: t.Union[str, "uri.URIReference"],
+        strict: bool = True,
+    ) -> _Self:
+        """Create a reference relative to an absolute base URI.
+
+        The returned reference resolves back to this reference when passed to
+        :meth:`resolve_with` with the same base URI. When this reference has
+        the same scheme and authority as the base, a path-relative reference
+        is returned. When the schemes differ, the reference is absolute. When
+        the schemes match but the authorities differ, a network-path
+        reference is returned.
+
+        :param base_uri: Either a string or URIReference. It must be an
+            absolute URI or it will raise an exception.
+        :param bool strict: When ``False``, schemes which differ only by case
+            are treated as equivalent.
+        :returns: A new reference relative to ``base_uri``.
+        :rtype: :class:`URIReference`
+        :raises rfc3986.exceptions.ResolutionError:
+            If either this reference or ``base_uri`` does not have a scheme.
+        """
+        if not isinstance(base_uri, URIMixin):
+            base_uri = type(self).from_string(base_uri)
+
+        if t.TYPE_CHECKING:
+            base_uri = t.cast(uri.URIReference, base_uri)
+
+        try:
+            self._validator.validate(self)
+            self._validator.validate(base_uri)
+        except exc.ValidationError:
+            invalid_uri = self if self.scheme is None else base_uri
+            raise exc.ResolutionError(invalid_uri)
+
+        target = self._normalized_reference()
+        base = base_uri._normalized_reference()
+        if strict:
+            same_scheme = self.scheme == base_uri.scheme
+            same_authority = self.authority == base_uri.authority
+        else:
+            same_scheme = target.scheme == base.scheme
+            same_authority = target.authority == base.authority
+
+        if not same_scheme:
+            return self.copy_with()
+
+        if not same_authority:
+            return self.copy_with(scheme=None)
+
+        reference = target.copy_with(scheme=None)
+
+        if target.path is None:
+            can_omit_path = base.path is None and (
+                target.query is not None or base.query is None
+            )
+            if not can_omit_path:
+                return self.copy_with()
+            return reference.copy_with(authority=None, path=None)
+
+        if base.path is not None and "/" not in base.path:
+            return self.copy_with()
+
+        base_path = base.path or ""
+        base_slash = base_path.rfind("/")
+        if base_slash == -1:
+            base_directory = []
+        else:
+            base_directory = base_path[:base_slash].split("/")
+        target_segments = (target.path or "").split("/")
+
+        common = 0
+        while (
+            common < len(base_directory)
+            and common < len(target_segments) - 1
+            and base_directory[common] == target_segments[common]
+        ):
+            common += 1
+
+        relative_segments = [".."] * (len(base_directory) - common)
+        relative_segments.extend(target_segments[common:])
+        relative_path = "/".join(relative_segments)
+
+        if relative_path == "":
+            empty_path_preserves_target = target.path == base.path and (
+                target.query is not None or base.query is None
+            )
+            if not empty_path_preserves_target:
+                relative_path = "."
+        elif self._relative_path_needs_dot_slash(relative_path):
+            relative_path = "./" + relative_path
+
+        if relative_path == "":
+            return reference.copy_with(authority=None, path=None)
+        return reference.copy_with(authority=None, path=relative_path)
+
+    @staticmethod
+    def _relative_path_needs_dot_slash(path: str) -> bool:
+        first_segment = path.split("/", 1)[0]
+        return ":" in first_segment
+
+    def _normalized_reference(self) -> _Self:
+        normalize = getattr(self, "normalize", None)
+        if callable(normalize):
+            return normalize()
+
+        authority = self.authority
+        if authority:
+            try:
+                authority_info = self.authority_info()
+            except exc.InvalidAuthority:
+                pass
+            else:
+                authority_parts = []
+                if authority_info["userinfo"]:
+                    authority_parts.append(authority_info["userinfo"])
+                    authority_parts.append("@")
+                authority_parts.append(
+                    normalizers.normalize_host(authority_info["host"])
+                )
+                if authority_info["port"]:
+                    authority_parts.append(":")
+                    authority_parts.append(authority_info["port"])
+                authority = "".join(authority_parts)
+
+        return self.copy_with(
+            scheme=normalizers.normalize_scheme(self.scheme or ""),
+            authority=authority,
+            path=normalizers.normalize_path(self.path or ""),
+            query=normalizers.normalize_query(self.query),
+            fragment=normalizers.normalize_fragment(self.fragment),
+        )
 
     def unsplit(self) -> str:
         """Create a URI string from the components.

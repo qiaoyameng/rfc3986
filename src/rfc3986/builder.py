@@ -284,6 +284,153 @@ class URIBuilder:
 
         return self.add_path(path)
 
+    def _append_path_segments(
+        self,
+        encoded_segments: t.List[str],
+    ) -> "URIBuilder":
+        """Append already-encoded path segments without resolving them.
+
+        Segments are joined with single slashes. Empty segments produce
+        slashes (trailing or otherwise), and ``.`` as well as ``..`` are
+        kept verbatim; no dot-segment removal or relative-path resolution is
+        performed.
+        """
+        path = self.path
+        for segment in encoded_segments:
+            if path is None:
+                path = "/" + segment
+            else:
+                path = path + "/" + segment
+
+        return URIBuilder(
+            scheme=self.scheme,
+            userinfo=self.userinfo,
+            host=self.host,
+            port=self.port,
+            path=path,
+            query=self.query,
+            fragment=self.fragment,
+        )
+
+    def add_path_segment(self, segment: str) -> "URIBuilder":
+        """Append a single raw path segment.
+
+        The segment is treated as opaque data and percent-encoded. In
+        particular, ``/``, ``?`` and ``#`` inside the segment are encoded so
+        they cannot alter the structure of the URI. This makes the method
+        safe for object keys and other arbitrary data.
+
+        .. code-block:: python
+
+            >>> URIBuilder(path='/buckets').add_path_segment(
+            ...     'photos/2017?a=1#frag'
+            ... ).path
+            '/buckets/photos%2F2017%3Fa=1%23frag'
+
+        An empty segment adds a trailing slash:
+
+        .. code-block:: python
+
+            >>> URIBuilder(path='/buckets').add_path_segment('').path
+            '/buckets/'
+
+        The literal segments ``.`` and ``..`` are appended verbatim; they are
+        neither removed nor resolved (this is not relative-reference
+        resolution).
+        """
+        return self._append_path_segments(
+            [normalizers.encode_path_segment(segment)]
+        )
+
+    def add_path_segments(
+        self,
+        segments: t.Union[str, t.Iterable[str]],
+        *more_segments: str,
+    ) -> "URIBuilder":
+        """Append multiple raw path segments.
+
+        Each segment is percent-encoded independently, as described in
+        :meth:`add_path_segment`. Segments may be passed as a single
+        iterable or as positional arguments.
+
+        .. code-block:: python
+
+            >>> URIBuilder(path='/b').add_path_segments(
+            ...     ['photos/2017', '100%.jpg']
+            ... ).path
+            '/b/photos%2F2017/100%25.jpg'
+        """
+        if isinstance(segments, str):
+            segment_list = [segments]
+            segment_list.extend(more_segments)
+        else:
+            if more_segments:
+                raise TypeError(
+                    "segments may be an iterable or positional arguments, "
+                    "but not both"
+                )
+            segment_list = list(segments)
+
+        return self._append_path_segments(
+            [
+                normalizers.encode_path_segment(segment)
+                for segment in segment_list
+            ]
+        )
+
+    def add_encoded_path_segment(self, segment: str) -> "URIBuilder":
+        """Append a single already percent-encoded path segment.
+
+        Unlike :meth:`add_path_segment`, the input is not encoded again.
+        Instead its percent-encoded triplets are validated so that text
+        produced by an encoder can be preserved verbatim without double
+        encoding.
+
+        :raises ValueError: if the segment contains a ``%`` that is not
+            followed by two hexadecimal digits.
+
+        .. code-block:: python
+
+            >>> URIBuilder(path='/b').add_encoded_path_segment(
+            ...     'photos%2F2017'
+            ... ).path
+            '/b/photos%2F2017'
+        """
+        return self._append_path_segments(
+            [normalizers.validate_percent_encodings(segment)]
+        )
+
+    def add_encoded_path_segments(
+        self,
+        segments: t.Union[str, t.Iterable[str]],
+        *more_segments: str,
+    ) -> "URIBuilder":
+        """Append multiple already percent-encoded path segments.
+
+        See :meth:`add_encoded_path_segment`. Each segment is validated and
+        appended verbatim without being encoded again.
+
+        :raises ValueError: if a segment contains an invalid percent
+            sequence.
+        """
+        if isinstance(segments, str):
+            segment_list = [segments]
+            segment_list.extend(more_segments)
+        else:
+            if more_segments:
+                raise TypeError(
+                    "segments may be an iterable or positional arguments, "
+                    "but not both"
+                )
+            segment_list = list(segments)
+
+        return self._append_path_segments(
+            [
+                normalizers.validate_percent_encodings(segment)
+                for segment in segment_list
+            ]
+        )
+
     def add_query_from(self, query_items: _QueryType) -> "URIBuilder":
         """Generate and add a query a dictionary or list of tuples.
 

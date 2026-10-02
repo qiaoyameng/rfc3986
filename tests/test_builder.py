@@ -323,3 +323,158 @@ def test_geturl():
         "sigmavirus24/rfc3986"
     )
     assert expected == uri
+
+
+# ---------------------------------------------------------------------------
+# Segment-based path building
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "segment, expected",
+    [
+        ("sigmavirus24", "/sigmavirus24"),
+        ("photos/2017", "/photos%2F2017"),
+        ("a?b", "/a%3Fb"),
+        ("a#b", "/a%23b"),
+        ("a/b?c#d", "/a%2Fb%3Fc%23d"),
+        ("100%", "/100%25"),
+        ("a=b+c", "/a=b+c"),
+        ("café", "/caf%C3%A9"),
+        (".", "/."),
+        ("..", "/.."),
+        ("", "/"),
+    ],
+)
+def test_add_path_segment_encodes_raw_data(segment, expected):
+    """add_path_segment treats its argument as opaque data."""
+    uribuilder = builder.URIBuilder().add_path_segment(segment)
+    assert uribuilder.path == expected
+
+
+def test_add_path_segment_appends_to_existing_path():
+    """Segments are joined with a single slash."""
+    uribuilder = builder.URIBuilder(path="/buckets").add_path_segment(
+        "photos/2017"
+    )
+    assert uribuilder.path == "/buckets/photos%2F2017"
+
+
+def test_add_path_segment_object_key_round_trip():
+    """Object keys with slashes and a literal percent survive a round trip."""
+    from urllib.parse import unquote
+
+    segments = ["my/bucket", "photos/2017", "100%.jpg", "a?b#c"]
+    uribuilder = (
+        builder.URIBuilder()
+        .add_scheme("https")
+        .add_host("storage.example.com")
+        .add_path_segments(segments)
+    )
+    path = uribuilder.finalize().path
+    decoded = [unquote(part) for part in path.lstrip("/").split("/")]
+    assert decoded == segments
+
+
+def test_add_path_segments_variadic():
+    """Segments may be passed as positional arguments too."""
+    uribuilder = builder.URIBuilder(path="/b").add_path_segments("a/b", "c")
+    assert uribuilder.path == "/b/a%2Fb/c"
+
+
+def test_add_path_segment_empty_and_trailing_slash():
+    """Empty segments add slashes without collapsing existing ones."""
+    uribuilder = builder.URIBuilder(path="/a").add_path_segment("")
+    assert uribuilder.path == "/a/"
+
+    uribuilder = (
+        builder.URIBuilder(path="/a").add_path_segment("").add_path_segment("")
+    )
+    assert uribuilder.path == "/a//"
+
+
+def test_add_path_segment_keeps_dot_segments():
+    """'.' and '..' are data; they are not resolved or removed."""
+    uribuilder = builder.URIBuilder(path="/a").add_path_segments(
+        ["..", ".", "x"]
+    )
+    assert uribuilder.path == "/a/.././x"
+
+
+def test_add_path_segment_preserves_query_fragment_and_authority():
+    """The base URI's authority, query and fragment stay untouched."""
+    uribuilder = builder.URIBuilder.from_uri(
+        "https://user:pw@host.example:8080/base?q=1#frag"
+    ).add_path_segment("a/b")
+    assert uribuilder.userinfo == "user:pw"
+    assert uribuilder.host == "host.example"
+    assert uribuilder.port == "8080"
+    assert uribuilder.query == "q=1"
+    assert uribuilder.fragment == "frag"
+    assert uribuilder.path == "/base/a%2Fb"
+    assert uribuilder.geturl() == (
+        "https://user:pw@host.example:8080/base/a%2Fb?q=1#frag"
+    )
+
+
+def test_add_path_segment_does_not_normalize_path():
+    """Segment building is not relative-reference resolution."""
+    uribuilder = builder.URIBuilder(path="/a").add_path_segment("../b")
+    assert uribuilder.path == "/a/..%2Fb"
+
+
+@pytest.mark.parametrize(
+    "segment",
+    [
+        "photos%2F2017",
+        "100%25.jpg",
+        "a%2fb%C3%A9",
+        "plain",
+        "",
+    ],
+)
+def test_add_encoded_path_segment_is_not_encoded_again(segment):
+    """Already encoded text is appended verbatim."""
+    uribuilder = builder.URIBuilder(path="/b").add_encoded_path_segment(
+        segment
+    )
+    assert uribuilder.path == "/b/" + segment
+
+
+@pytest.mark.parametrize(
+    "segment",
+    ["%", "%2", "%zz", "%2g", "100%.jpg", "a%2F%"],
+)
+def test_add_encoded_path_segment_validates_percent_sequences(segment):
+    """Bare '%' or malformed triplets raise a ValueError."""
+    with pytest.raises(ValueError):
+        builder.URIBuilder(path="/b").add_encoded_path_segment(segment)
+
+
+def test_add_encoded_path_segments_iterable_and_varargs():
+    """The plural form accepts an iterable or positional arguments."""
+    uribuilder = builder.URIBuilder(path="/b").add_encoded_path_segments(
+        ["a%2Fb", "c"]
+    )
+    assert uribuilder.path == "/b/a%2Fb/c"
+
+    uribuilder = builder.URIBuilder(path="/b").add_encoded_path_segments(
+        "a%2Fb", "c"
+    )
+    assert uribuilder.path == "/b/a%2Fb/c"
+
+
+def test_add_encoded_path_segments_reject_mixing_forms():
+    """An iterable and positional arguments cannot be combined."""
+    with pytest.raises(TypeError):
+        builder.URIBuilder(path="/b").add_path_segments(["a"], "b")
+    with pytest.raises(TypeError):
+        builder.URIBuilder(path="/b").add_encoded_path_segments(["a"], "b")
+
+
+def test_segment_builders_are_immutable():
+    """Adding a segment returns a new builder, leaving the original intact."""
+    original = builder.URIBuilder(path="/a")
+    extended = original.add_path_segment("b")
+    assert original.path == "/a"
+    assert extended.path == "/a/b"

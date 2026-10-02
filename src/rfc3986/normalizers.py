@@ -119,6 +119,54 @@ def normalize_fragment(fragment: t.Optional[str]) -> t.Optional[str]:
 
 PERCENT_MATCHER = re.compile("%[A-Fa-f0-9]{2}")
 
+# Characters allowed unencoded in a single path segment, i.e. everything the
+# pchar rule permits besides percent-encoded triplets. Notably this does not
+# include '/', '?' or '#' so that those characters are always encoded and can
+# never change the URI structure. See RFC 3986 section 3.3.
+PATH_SEGMENT_SAFE = ":@!$&'()*+,;="
+
+
+def encode_path_segment(segment: str, encoding: str = "utf-8") -> str:
+    """Percent-encode one raw path segment.
+
+    The segment is treated as opaque data: every character that is not a
+    valid unencoded path character (including ``/``, ``?`` and ``#``) is
+    percent-encoded. Decoding the resulting segment with
+    :func:`urllib.parse.unquote` returns the original data.
+    """
+    return urlquote(segment, safe=PATH_SEGMENT_SAFE, encoding=encoding)
+
+
+def validate_percent_encodings(
+    text: str, component: str = "path segment"
+) -> str:
+    """Validate the percent-encoded triplets in *text*.
+
+    Every ``%`` must be followed by two hexadecimal digits, otherwise the
+    text cannot be percent-encoded and encoding it as-is would risk double
+    encoding. The text is returned unchanged so existing triplets (including
+    the casing of their hex digits) are preserved verbatim.
+    """
+    # A valid triplet is '%' followed by two hexadecimal digits.
+    index = 0
+    while index < len(text):
+        if text[index] != "%":
+            index += 1
+            continue
+        triplet = text[index + 1 : index + 3]
+        if len(triplet) < 2 or any(
+            char not in "0123456789abcdefABCDEF" for char in triplet
+        ):
+            raise ValueError(
+                "Invalid percent-encoding in {} at position {}: {!r}".format(
+                    component,
+                    index,
+                    text[index : index + 3],
+                )
+            )
+        index += 3
+    return text
+
 
 def normalize_percent_characters(s: str) -> str:
     """All percent characters should be upper-cased.

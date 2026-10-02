@@ -18,6 +18,14 @@
 
 .. automethod:: rfc3986.builder.URIBuilder.extend_path
 
+.. automethod:: rfc3986.builder.URIBuilder.add_path_segment
+
+.. automethod:: rfc3986.builder.URIBuilder.add_path_segments
+
+.. automethod:: rfc3986.builder.URIBuilder.add_encoded_path_segment
+
+.. automethod:: rfc3986.builder.URIBuilder.add_encoded_path_segments
+
 .. automethod:: rfc3986.builder.URIBuilder.add_query_from
 
 .. automethod:: rfc3986.builder.URIBuilder.extend_query_with

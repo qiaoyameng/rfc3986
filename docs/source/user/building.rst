@@ -105,8 +105,83 @@ Requests that used the provided path to extend the original one.
     ... )
     >>> print(github_builder.extend_path("sigmavirus24").geturl())
     https://api.github.com/users/sigmavirus24
-    >>> print(github_builder.extend_path("lukasa").geturl())
-    https://api.github.com/users/lukasa
+>>> print(github_builder.extend_path("lukasa").geturl())
+https://api.github.com/users/lukasa
+
+Adding Data as Path Segments
+----------------------------
+
+Object keys and other data frequently contain characters that are special
+in a URI path, namely ``/``, ``?`` and ``#``. Concatenating such a value
+onto a base URI changes the structure of the address (e.g. the part after
+``#`` would be interpreted as a fragment).
+
+:meth:`~rfc3986.builder.URIBuilder.add_path_segment` and
+:meth:`~rfc3986.builder.URIBuilder.add_path_segments` build the path one
+segment at a time and treat their arguments as raw data: every character
+that is not allowed unencoded in a path segment is percent-encoded, so
+``/``, ``?`` and ``#`` within the data can never alter the URI.
+
+.. doctest::
+
+    >>> from rfc3986 import builder
+    >>> print(builder.URIBuilder.from_uri(
+    ...     'https://storage.example.com/buckets'
+    ... ).add_path_segment('photos/2017?size=large#top').geturl())
+    https://storage.example.com/buckets/photos%2F2017%3Fsize=large%23top
+
+Multiple segments may be supplied as an iterable or as positional
+arguments:
+
+.. doctest::
+
+    >>> from urllib.parse import unquote
+    >>> keys = ['my/bucket', 'photos/2017', '100%.jpg']
+    >>> built = builder.URIBuilder.from_uri(
+    ...     'https://storage.example.com'
+    ... ).add_path_segments(keys)
+    >>> print(built.geturl())
+    https://storage.example.com/my%2Fbucket/photos%2F2017/100%25.jpg
+    >>> [unquote(part) for part in built.path.lstrip('/').split('/')]
+    ['my/bucket', 'photos/2017', '100%.jpg']
+
+Empty segments add slashes: an empty segment appends a trailing slash and
+empty segments are never collapsed. The literal segments ``.`` and ``..``
+are appended verbatim -- they are data, not dot segments, and no
+relative-reference resolution is performed. Segment building is thus
+distinct from :meth:`~rfc3986.builder.URIBuilder.add_path` and
+:meth:`~rfc3986.builder.URIBuilder.extend_path`, which work with whole
+path strings.
+
+.. doctest::
+
+    >>> print(builder.URIBuilder(path='/a').add_path_segment('').geturl())
+    /a/
+    >>> print(builder.URIBuilder(path='/a').add_path_segments(
+    ...     ['..', '.', 'x']
+    ... ).geturl())
+    /a/.././x
+
+Appending Already-Encoded Text
+-------------------------------
+
+If a segment was already percent-encoded by another component, use
+:meth:`~rfc3986.builder.URIBuilder.add_encoded_path_segment` (or
+:meth:`~rfc3986.builder.URIBuilder.add_encoded_path_segments`) instead.
+These methods do not encode the text again, so double encoding is avoided,
+but validate that every ``%`` begins a valid percent-encoded triplet.
+Malformed sequences, such as a bare ``%`` or ``%2``, raise a
+:class:`ValueError`.
+
+.. doctest::
+
+    >>> print(builder.URIBuilder(path='/b').add_encoded_path_segment(
+    ...     'photos%2F2017'
+    ... ).geturl())
+    /b/photos%2F2017
+
+In every case the base URI's authority, query and fragment are preserved
+exactly as they were.
 
 
 Convenient Credential Handling

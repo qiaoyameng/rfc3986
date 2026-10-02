@@ -13,8 +13,10 @@
 # limitations under the License.
 """Module containing the logic for the URIBuilder object."""
 
+import re
 import typing as t
 from urllib.parse import parse_qsl
+from urllib.parse import quote as urlquote
 from urllib.parse import urlencode
 
 from . import normalizers
@@ -31,6 +33,58 @@ _QueryType = t.Union[
     t.List[t.Tuple[t.Any, t.Any]],
     t.List[t.Tuple[t.Any, t.Sequence[t.Any]]],
 ]
+
+
+# Matches a '%' that is not followed by exactly two hexadecimal digits.
+_INVALID_PERCENT_MATCHER = re.compile(r"%(?![0-9A-Fa-f]{2})")
+
+# Characters that may not appear raw in a single path segment without
+# changing the structure of the resulting URI.
+_SEGMENT_DELIMITERS = "/?#"
+
+
+def _encode_path_segment(segment: str) -> str:
+    """Percent-encode raw data so that it fits in exactly one segment.
+
+    Everything outside of the unreserved characters is encoded, including
+    '/', '?', '#', and '%', so the value can never alter the structure of
+    the URI it is added to. The literal segments '.' and '..' are encoded
+    as well so they are not removed by dot-segment normalization.
+    """
+    if segment == ".":
+        return "%2E"
+    if segment == "..":
+        return "%2E%2E"
+    return urlquote(segment, safe="")
+
+
+def _validate_encoded_path_segment(segment: str) -> None:
+    """Validate a path segment that is already percent-encoded.
+
+    Raises a ValueError if the segment contains a malformed percent
+    sequence (which would otherwise be encoded a second time), a raw
+    delimiter that would break out of the segment, or a raw '.' or '..'
+    segment that would be removed by dot-segment normalization.
+    """
+    if _INVALID_PERCENT_MATCHER.search(segment):
+        raise ValueError(
+            "Encoded path segments must only contain valid percent "
+            "sequences, i.e., '%' followed by two hexadecimal digits. "
+            "You provided {!r}".format(segment)
+        )
+    for delimiter in _SEGMENT_DELIMITERS:
+        if delimiter in segment:
+            raise ValueError(
+                "Encoded path segments must not contain a raw {!r} "
+                "character. Percent-encode it or use add_path_segment to "
+                "add raw data. You provided {!r}".format(delimiter, segment)
+            )
+    if segment in (".", ".."):
+        raise ValueError(
+            "Encoded path segments must not be a raw {!r} segment as it "
+            "would be removed by dot-segment normalization. Use {!r} "
+            "instead.".format(segment, _encode_path_segment(segment))
+        )
 
 
 class URIBuilder:
@@ -283,6 +337,106 @@ class URIBuilder:
         path = "{}/{}".format(existing_path.rstrip("/"), path.lstrip("/"))
 
         return self.add_path(path)
+
+    def add_path_segment(self, segment: str) -> "URIBuilder":
+        """Append a single path segment, encoding the value as raw data.
+
+        .. versionadded:: 2.1.0
+
+        The segment is treated as opaque data: every character outside of
+        the unreserved set (including ``/``, ``?``, ``#``, and ``%``) is
+        percent-encoded, so the value always occupies exactly one path
+        segment and can never alter the structure of the URI. This makes
+        it safe to use values such as object keys that may contain
+        slashes, question marks, or literal percent signs. Decoding the
+        resulting segment (e.g., with ``urllib.parse.unquote``) returns
+        the original value.
+
+        An empty segment is allowed and appends an empty segment, which
+        is how a trailing slash is produced. The literal segments ``.``
+        and ``..`` are encoded (``%2E`` and ``%2E%2E``) so they survive
+        dot-segment normalization as data.
+
+        This method does not parse the value as a relative path; use
+        :meth:`extend_path` for that. If the value is already
+        percent-encoded, use :meth:`add_encoded_path_segment` instead to
+        avoid double-encoding.
+
+        .. code-block:: python
+
+            >>> URIBuilder(path="/objects").add_path_segment("a/b?c#d")
+            URIBuilder(scheme=None, userinfo=None, host=None, port=None,
+                    path='/objects/a%2Fb%3Fc%23d', query=None,
+                    fragment=None)
+
+            >>> URIBuilder(path="/objects").add_path_segment("100%")
+            URIBuilder(scheme=None, userinfo=None, host=None, port=None,
+                    path='/objects/100%25', query=None, fragment=None)
+
+            >>> URIBuilder(path="/objects").add_path_segment("")
+            URIBuilder(scheme=None, userinfo=None, host=None, port=None,
+                    path='/objects/', query=None, fragment=None)
+
+        """
+        return self._append_path_segment(_encode_path_segment(segment))
+
+    def add_encoded_path_segment(self, segment: str) -> "URIBuilder":
+        """Append a single path segment that is already percent-encoded.
+
+        .. versionadded:: 2.1.0
+
+        This is the explicit entry point for values that must be kept
+        as-is because they are already percent-encoded. The value is
+        validated before being appended so that it cannot be
+        double-encoded or break out of its segment:
+
+        - Every ``%`` must be followed by two hexadecimal digits,
+          otherwise a :exc:`ValueError` is raised.
+        - Raw ``/``, ``?``, and ``#`` characters are rejected, as they
+          would change the structure of the URI.
+        - Raw ``.`` and ``..`` segments are rejected, as they would be
+          removed by dot-segment normalization; use ``%2E`` and
+          ``%2E%2E`` instead.
+
+        An empty segment is allowed and appends an empty segment, which
+        is how a trailing slash is produced. Valid percent sequences are
+        normalized to upper-case. To add raw, unencoded data, use
+        :meth:`add_path_segment` instead.
+
+        .. code-block:: python
+
+            >>> URIBuilder(path="/objects").add_encoded_path_segment("a%2Fb")
+            URIBuilder(scheme=None, userinfo=None, host=None, port=None,
+                    path='/objects/a%2Fb', query=None, fragment=None)
+
+            >>> URIBuilder(path="/objects").add_encoded_path_segment("a/b")
+            Traceback (most recent call last):
+            ...
+            ValueError: Encoded path segments must not contain a raw ...
+
+        """
+        _validate_encoded_path_segment(segment)
+        segment = normalizers.normalize_percent_characters(segment)
+        return self._append_path_segment(segment)
+
+    def _append_path_segment(self, encoded_segment: str) -> "URIBuilder":
+        """Append an already-encoded segment to the existing path.
+
+        The existing path, query, fragment, and authority components are
+        preserved exactly as they are.
+        """
+        existing_path = self.path or ""
+        path = "{}/{}".format(existing_path.rstrip("/"), encoded_segment)
+
+        return URIBuilder(
+            scheme=self.scheme,
+            userinfo=self.userinfo,
+            host=self.host,
+            port=self.port,
+            path=path,
+            query=self.query,
+            fragment=self.fragment,
+        )
 
     def add_query_from(self, query_items: _QueryType) -> "URIBuilder":
         """Generate and add a query a dictionary or list of tuples.

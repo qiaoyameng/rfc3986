@@ -18,6 +18,8 @@ try:
 except ImportError:
     from urlparse import parse_qs
 
+from urllib.parse import unquote
+
 import pytest
 
 from rfc3986 import builder
@@ -323,3 +325,180 @@ def test_geturl():
         "sigmavirus24/rfc3986"
     )
     assert expected == uri
+
+
+@pytest.mark.parametrize(
+    "segment, expected_path",
+    [
+        ("simple", "/objects/simple"),
+        ("a/b/c", "/objects/a%2Fb%2Fc"),
+        ("a?b#c", "/objects/a%3Fb%23c"),
+        ("100%", "/objects/100%25"),
+        ("%2F", "/objects/%252F"),
+        (".", "/objects/%2E"),
+        ("..", "/objects/%2E%2E"),
+        ("", "/objects/"),
+        ("sp ace&+", "/objects/sp%20ace%26%2B"),
+    ],
+)
+def test_add_path_segment_encodes_raw_data(segment, expected_path):
+    """Verify segments are encoded as raw data, one segment each."""
+    uribuilder = builder.URIBuilder(path="/objects").add_path_segment(segment)
+    assert uribuilder.path == expected_path
+
+
+@pytest.mark.parametrize(
+    "segment",
+    [
+        "simple",
+        "a/b/c",
+        "a?b#c",
+        "100%",
+        "%2F",
+        ".",
+        "..",
+        "sp ace&+",
+        "café/donné",
+    ],
+)
+def test_add_path_segment_round_trips(segment):
+    """Verify decoding the appended segment restores the original data."""
+    uribuilder = builder.URIBuilder(path="/objects").add_path_segment(segment)
+    appended = uribuilder.path.rsplit("/", 1)[-1]
+    assert unquote(appended) == segment
+
+
+def test_add_path_segment_appends_a_single_segment():
+    """Verify a key containing slashes stays a single segment."""
+    uribuilder = builder.URIBuilder(path="/objects").add_path_segment("a/b")
+    assert uribuilder.path == "/objects/a%2Fb"
+    assert len(uribuilder.path.split("/")) == 3
+
+
+def test_add_path_segment_to_empty_path():
+    """Verify a segment added to an empty path gets a leading slash."""
+    uribuilder = builder.URIBuilder().add_path_segment("segment")
+    assert uribuilder.path == "/segment"
+
+
+def test_add_path_segment_to_root_path():
+    """Verify a segment added to the root path is not doubled up."""
+    uribuilder = builder.URIBuilder(path="/").add_path_segment("segment")
+    assert uribuilder.path == "/segment"
+
+
+def test_add_path_segment_strips_trailing_slash():
+    """Verify segments are not separated by duplicate slashes."""
+    uribuilder = builder.URIBuilder(path="/objects/").add_path_segment("key")
+    assert uribuilder.path == "/objects/key"
+
+
+def test_add_path_segment_empty_segment_adds_trailing_slash():
+    """Verify an empty segment produces a trailing slash."""
+    uribuilder = (
+        builder.URIBuilder(path="/objects")
+        .add_path_segment("key")
+        .add_path_segment("")
+    )
+    assert uribuilder.path == "/objects/key/"
+
+
+def test_add_path_segment_preserves_other_components():
+    """Verify authority, query, and fragment are preserved as-is."""
+    uribuilder = (
+        builder.URIBuilder()
+        .from_uri("https://user@example.com:8443/objects?q=%2f#frag%2F")
+        .add_path_segment("a/b")
+    )
+    assert uribuilder.host == "example.com"
+    assert uribuilder.port == "8443"
+    assert uribuilder.userinfo == "user"
+    assert uribuilder.query == "q=%2f"
+    assert uribuilder.fragment == "frag%2F"
+    assert uribuilder.path == "/objects/a%2Fb"
+    assert (
+        uribuilder.geturl()
+        == "https://user@example.com:8443/objects/a%2Fb?q=%2f#frag%2F"
+    )
+
+
+def test_add_path_segment_dot_segments_survive_normalization():
+    """Verify '.' and '..' are kept as data after normalization."""
+    uribuilder = (
+        builder.URIBuilder(path="/objects")
+        .add_path_segment("..")
+        .add_path_segment(".")
+    )
+    assert uribuilder.path == "/objects/%2E%2E/%2E"
+    finalized = uribuilder.finalize().normalize()
+    assert finalized.path == "/objects/%2E%2E/%2E"
+
+
+def test_add_encoded_path_segment_keeps_encoding():
+    """Verify pre-encoded segments are kept as-is."""
+    uribuilder = builder.URIBuilder(path="/objects").add_encoded_path_segment(
+        "a%2Fb%3Fc%23d"
+    )
+    assert uribuilder.path == "/objects/a%2Fb%3Fc%23d"
+
+
+def test_add_encoded_path_segment_normalizes_percent_case():
+    """Verify valid percent sequences are upper-cased."""
+    uribuilder = builder.URIBuilder(path="/objects").add_encoded_path_segment(
+        "a%2fb"
+    )
+    assert uribuilder.path == "/objects/a%2Fb"
+
+
+def test_add_encoded_path_segment_allows_empty_segment():
+    """Verify an empty encoded segment produces a trailing slash."""
+    uribuilder = builder.URIBuilder(path="/objects").add_encoded_path_segment(
+        ""
+    )
+    assert uribuilder.path == "/objects/"
+
+
+@pytest.mark.parametrize(
+    "segment",
+    [
+        "%",
+        "%2",
+        "%zz",
+        "100%",
+        "a%2",
+        "a%xF",
+    ],
+)
+def test_add_encoded_path_segment_rejects_invalid_percents(segment):
+    """Verify malformed percent sequences are rejected."""
+    with pytest.raises(ValueError):
+        builder.URIBuilder(path="/objects").add_encoded_path_segment(segment)
+
+
+@pytest.mark.parametrize("delimiter", ["/", "?", "#"])
+def test_add_encoded_path_segment_rejects_raw_delimiters(delimiter):
+    """Verify raw delimiters are rejected in encoded segments."""
+    with pytest.raises(ValueError):
+        builder.URIBuilder(path="/objects").add_encoded_path_segment(
+            "a{}b".format(delimiter)
+        )
+
+
+@pytest.mark.parametrize("segment", [".", ".."])
+def test_add_encoded_path_segment_rejects_dot_segments(segment):
+    """Verify raw dot segments are rejected in encoded segments."""
+    with pytest.raises(ValueError):
+        builder.URIBuilder(path="/objects").add_encoded_path_segment(segment)
+
+
+def test_add_encoded_path_segment_preserves_other_components():
+    """Verify authority, query, and fragment are preserved as-is."""
+    uribuilder = (
+        builder.URIBuilder()
+        .from_uri("https://user@example.com:8443/objects?q=1#frag")
+        .add_encoded_path_segment("a%2Fb")
+    )
+    assert (
+        uribuilder.geturl()
+        == "https://user@example.com:8443/objects/a%2Fb?q=1#frag"
+    )

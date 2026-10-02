@@ -2,6 +2,7 @@ import pytest
 
 import rfc3986
 from rfc3986.exceptions import InvalidAuthority
+from rfc3986.iri import IRIReference
 
 try:
     import idna
@@ -57,6 +58,25 @@ def test_iri_equality_special_cases():
 
     with pytest.raises(TypeError):
         rfc3986.iri_reference("http://ẞ.com") == 1
+
+
+def test_relative_to_roundtrips_for_iri():
+    target = IRIReference.from_string("http://example.com/a/b")
+    base = IRIReference.from_string("http://example.com/a/c")
+
+    relative = target.relative_to(base)
+
+    assert relative.unsplit() == "b"
+    assert relative.resolve_with(base, strict=True) == target
+
+
+def test_normalize_preserves_iri_host_characters():
+    iri = IRIReference.from_string("http://BÜCHER.example/a/b/../c")
+
+    normalized = iri.normalize()
+
+    assert normalized.authority == "bücher.example"
+    assert normalized.path == "/a/c"
 
 
 @requires_idna

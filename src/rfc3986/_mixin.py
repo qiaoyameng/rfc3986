@@ -11,6 +11,45 @@ from . import validators
 from ._typing_compat import Self as _Self
 
 
+def _relative_path(base_path: str, target_path: str) -> t.Optional[str]:
+    if base_path.startswith("/"):
+        if not target_path.startswith("/"):
+            return None
+    elif target_path.startswith("/") or "/" not in base_path:
+        return None
+
+    if base_path.endswith("/"):
+        base_directory = base_path
+    else:
+        base_directory = base_path[: base_path.rfind("/") + 1]
+
+    base_segments = base_directory.split("/")[:-1]
+    target_segments = target_path.split("/")
+    common_segments = 0
+
+    for base_segment, target_segment in zip(
+        base_segments, target_segments[:-1]
+    ):
+        if base_segment != target_segment:
+            break
+        common_segments += 1
+
+    relative_segments = [".."] * (
+        len(base_segments) - common_segments
+    )
+    relative_segments.extend(target_segments[common_segments:])
+
+    if relative_segments == [""]:
+        return "./"
+    if relative_segments[0] == "":
+        relative_segments.insert(0, ".")
+
+    relative_path = "/".join(relative_segments)
+    if ":" in relative_path.split("/", 1)[0]:
+        relative_path = "./" + relative_path
+    return relative_path
+
+
 class _AuthorityInfo(t.TypedDict):
     """A typed dict for the authority info triple: userinfo, host, and port."""
 
@@ -349,6 +388,85 @@ class URIMixin:
                         query=resolving.query,
                     )
         return target
+
+    def relative_to(  # noqa: C901
+        self,
+        base_uri: t.Union[str, "uri.URIReference"],
+    ) -> _Self:
+        """Create a relative reference to this URI from ``base_uri``.
+
+        The returned reference resolves to this URI using
+        :meth:`resolve_with` with ``strict=True``.
+
+        See http://tools.ietf.org/html/rfc3986#section-5 for more
+        information.
+
+        :param base_uri: Either a string or URIReference used as the
+            base URI. It must be an absolute URI or it will raise an
+            exception.
+        :returns: A new URIReference which resolves to this URI.
+        :rtype: :class:`URIReference`
+        :raises rfc3986.exceptions.ResolutionError:
+            If either URI does not at least have a scheme.
+        """
+        target = self
+        if not isinstance(base_uri, URIMixin):
+            base_uri = type(self).from_string(base_uri)
+
+        if t.TYPE_CHECKING:
+            base_uri = t.cast(uri.URIReference, base_uri)
+
+        if target.scheme is None:
+            raise exc.ResolutionError(target)
+
+        try:
+            self._validator.validate(base_uri)
+        except exc.ValidationError:
+            raise exc.ResolutionError(base_uri)
+
+        normalized_base = base_uri.normalize()
+        normalized_target = target.normalize()
+
+        if normalized_target.scheme != normalized_base.scheme:
+            return normalized_target
+
+        if normalized_target.authority != normalized_base.authority:
+            if normalized_target.authority is None:
+                return normalized_target
+            return normalized_target.copy_with(scheme=None)
+
+        if normalized_target.path is None:
+            if (
+                normalized_base.path is not None
+                or (
+                    normalized_target.query is None
+                    and normalized_base.query is not None
+                )
+            ):
+                return normalized_target
+            path = None
+        else:
+            path = _relative_path(
+                normalized_base.path
+                if normalized_target.authority is None
+                else normalized_base.path or "/",
+                normalized_target.path,
+            )
+            if path is None:
+                return normalized_target
+
+        query = normalized_target.query
+        if path is None:
+            if normalized_target.query == normalized_base.query:
+                query = None
+
+        return normalized_target.copy_with(
+            scheme=None,
+            authority=None,
+            path=path,
+            query=query,
+            fragment=normalized_target.fragment,
+        )
 
     def unsplit(self) -> str:
         """Create a URI string from the components.

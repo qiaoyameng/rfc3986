@@ -10,6 +10,8 @@
 
 .. automethod:: rfc3986.uri.URIReference.resolve_with
 
+.. automethod:: rfc3986.uri.URIReference.relative_to
+
 .. automethod:: rfc3986.uri.URIReference.copy_with
 
 .. automethod:: rfc3986.uri.URIReference.normalize

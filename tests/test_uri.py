@@ -386,6 +386,142 @@ class TestURIReferencesResolve:
         assert T1 == T2
         assert T1 == B
 
+    @pytest.mark.parametrize(
+        ("target_uri", "base_uri", "relative_reference"),
+        [
+            (
+                "http://example.com/a/b/d",
+                "http://example.com/a/b/c",
+                "d",
+            ),
+            (
+                "http://example.com/a/b/d",
+                "http://example.com/a/b/",
+                "d",
+            ),
+            (
+                "http://example.com/a/d",
+                "http://example.com/a/b/c",
+                "../d",
+            ),
+            (
+                "http://example.com/a/b/c",
+                "http://example.com/a/x/y",
+                "../b/c",
+            ),
+            (
+                "http://example.com/a/b/c",
+                "http://example.com/a/b/c?old=value",
+                "c",
+            ),
+            (
+                "http://example.com/a/b/c?",
+                "http://example.com/a/b/c?old=value",
+                "c?",
+            ),
+            (
+                "http://example.com/a/b/c?same=value",
+                "http://example.com/a/b/c?same=value",
+                "c?same=value",
+            ),
+            (
+                "http://example.com/a/b/c#",
+                "http://example.com/a/b/c",
+                "c#",
+            ),
+            (
+                "http://example.com/a/b/c/",
+                "http://example.com/a/b/d/./x",
+                "../c/",
+            ),
+            (
+                "http://example.com/a/%2Fb",
+                "http://example.com/a/c",
+                "%2Fb",
+            ),
+            (
+                "http://example.com/a/colon:file",
+                "http://example.com/a/file",
+                "./colon:file",
+            ),
+            (
+                "http://example.com/a/path",
+                "http://other.example.com/a/other",
+                "//example.com/a/path",
+            ),
+            (
+                "https://example.com/a/path",
+                "http://example.com/a/other",
+                "https://example.com/a/path",
+            ),
+            (
+                "http://example.com#fragment",
+                "http://example.com",
+                "#fragment",
+            ),
+            (
+                "http://example.com?same=value#fragment",
+                "http://example.com?same=value",
+                "#fragment",
+            ),
+            ("mailto:?new", "mailto:?old", "?new"),
+        ],
+    )
+    def test_relative_to_roundtrips(
+        self, target_uri, base_uri, relative_reference
+    ):
+        target = URIReference.from_string(target_uri)
+        base = URIReference.from_string(base_uri)
+
+        relative = target.relative_to(base)
+
+        assert relative.unsplit() == relative_reference
+        assert relative.resolve_with(base, strict=True) == target
+
+    @pytest.mark.parametrize(
+        ("target_uri", "base_uri"),
+        [
+            (
+                "http://example.com/a/b/c",
+                "http://example.com/a/x/y",
+            ),
+            (
+                "http://example.com/a/b/c?",
+                "http://example.com/a/b/c?old=value",
+            ),
+            (
+                "http://example.com/a/%2Fb",
+                "http://example.com/a/c",
+            ),
+            (
+                "http://example.com/a//b",
+                "http://example.com/a/c",
+            ),
+        ],
+    )
+    def test_relative_to_uses_path_segments(self, target_uri, base_uri):
+        target = URIReference.from_string(target_uri)
+        base = URIReference.from_string(base_uri)
+        resolved = target.relative_to(base).resolve_with(base, strict=True)
+
+        assert resolved.path == target.path
+
+    @pytest.mark.parametrize(
+        ("target_uri", "base_uri"),
+        [
+            ("/a/b/c", "http://example.com/a/b"),
+            ("http://example.com/a/b/c", "/a/b"),
+        ],
+    )
+    def test_relative_to_requires_absolute_references(
+        self, target_uri, base_uri
+    ):
+        target = URIReference.from_string(target_uri)
+        base = URIReference.from_string(base_uri)
+
+        with pytest.raises(ResolutionError):
+            target.relative_to(base)
+
 
 def test_empty_querystrings_persist():
     url = "https://httpbin.org/get?"

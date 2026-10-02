@@ -86,6 +86,28 @@ class IRIReference(misc.URIReferenceBase, uri.URIMixin):
     def _match_subauthority(self) -> t.Optional[t.Match[str]]:
         return misc.ISUBAUTHORITY_MATCHER.match(self.authority)
 
+    def normalize(self) -> "IRIReference":
+        """Normalize this reference as described in Section 6.2.2."""
+        authority = None
+        if self.authority is not None:
+            authority_info = self.authority_info()
+            authority = normalizers.normalize_authority(
+                (
+                    authority_info["userinfo"],
+                    authority_info["host"],
+                    authority_info["port"],
+                )
+            )
+
+        return IRIReference(
+            normalizers.normalize_scheme(self.scheme or ""),
+            authority,
+            normalizers.normalize_path(self.path or ""),
+            normalizers.normalize_query(self.query),
+            normalizers.normalize_fragment(self.fragment),
+            self.encoding,
+        )
+
     @classmethod
     def from_string(
         cls,

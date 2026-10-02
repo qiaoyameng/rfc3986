@@ -28,6 +28,9 @@ from .api import normalize_uri
 from .api import uri_reference
 from .api import urlparse
 from .parseresult import ParseResult
+from .profiles import NormalizationProfile
+from .profiles import ProfileNormalizationResult
+from .profiles import Transformation
 
 __title__ = "rfc3986"
 __author__ = "Ian Stapleton Cordasco"
@@ -37,7 +40,10 @@ __copyright__ = "Copyright 2014 Rackspace; 2016 Ian Stapleton Cordasco"
 __version__ = "2.0.0"
 
 __all__ = (
+    "NormalizationProfile",
     "ParseResult",
+    "ProfileNormalizationResult",
+    "Transformation",
     "URIReference",
     "IRIReference",
     "is_valid_uri",

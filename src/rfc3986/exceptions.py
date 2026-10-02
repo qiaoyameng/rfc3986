@@ -127,3 +127,11 @@ class InvalidComponentsError(ValidationError):
 
 class MissingDependencyError(RFC3986Exception):
     """Exception raised when an IRI is encoded without the 'idna' module."""
+
+
+class ConflictingProfileOptions(RFC3986Exception):
+    """Exception raised when normalization profile options conflict."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize the error with a description of the conflict."""
+        super().__init__(message)

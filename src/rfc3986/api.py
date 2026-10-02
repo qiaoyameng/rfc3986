@@ -28,6 +28,7 @@ from .uri import URIReference
 def uri_reference(
     uri: t.Union[str, bytes],
     encoding: str = "utf-8",
+    strict: bool = False,
 ) -> URIReference:
     """Parse a URI string into a URIReference.
 
@@ -36,10 +37,29 @@ def uri_reference(
 
     :param str uri: The URI which needs to be parsed into a reference.
     :param str encoding: The encoding of the string provided
+    :param bool strict: Validate the original reference before automatic
+        percent-encoding.
     :returns: A parsed URI
     :rtype: :class:`URIReference`
     """
-    return URIReference.from_string(uri, encoding)
+    return URIReference.from_string(uri, encoding, strict=strict)
+
+
+def strict_uri_reference(
+    uri: t.Union[str, bytes],
+    encoding: str = "utf-8",
+) -> URIReference:
+    """Parse a URI without lenient automatic percent-encoding.
+
+    This validates the original input before the compatibility behavior in
+    :func:`uri_reference` encodes otherwise acceptable non-ASCII text.
+
+    :param uri: The URI which needs to be parsed into a reference.
+    :param encoding: The encoding of bytes input.
+    :returns: A parsed URI
+    :rtype: :class:`URIReference`
+    """
+    return URIReference.from_string(uri, encoding, strict=True)
 
 
 def iri_reference(

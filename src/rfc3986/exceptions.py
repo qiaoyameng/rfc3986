@@ -48,6 +48,58 @@ class ValidationError(RFC3986Exception):
     pass
 
 
+class InvalidURIError(ValidationError):
+    """One or more syntax errors found while strictly parsing a URI."""
+
+    def __init__(
+        self,
+        uri: t.Union[str, bytes],
+        errors: t.Sequence["URIErrorDetail"],
+    ) -> None:
+        """Initialize the error with stable source-localized details."""
+        self.uri = uri
+        self.errors = tuple(errors)
+        details = ", ".join(str(error) for error in self.errors)
+        super().__init__(
+            f"Invalid URI reference: {details}",
+            uri,
+            self.errors,
+        )
+
+
+class URIErrorDetail(t.NamedTuple):
+    """Location and reason for one strict URI parsing error."""
+
+    component: str
+    reason: str
+    start: int
+    end: int
+    unit: str = "characters"
+    value: str = ""
+
+    @property
+    def span(self) -> t.Tuple[int, int]:
+        """Return the zero-based, half-open source interval."""
+        return (self.start, self.end)
+
+    @property
+    def component_name(self) -> str:
+        """Alias for the component containing the error."""
+        return self.component
+
+    @property
+    def range(self) -> t.Tuple[int, int]:
+        """Alias for :attr:`span`."""
+        return self.span
+
+    def __str__(self) -> str:
+        """Render a concise machine- and human-readable location."""
+        return (
+            f"{self.component} {self.reason} at {self.unit} "
+            f"{self.start}-{self.end}: {self.value!r}"
+        )
+
+
 class MissingComponentError(ValidationError):
     """Exception raised when a required component is missing."""
 

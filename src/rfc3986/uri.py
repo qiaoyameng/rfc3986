@@ -152,13 +152,21 @@ class URIReference(misc.URIReferenceBase, URIMixin):
         cls,
         uri_string: t.Union[str, bytes],
         encoding: str = "utf-8",
+        strict: bool = False,
     ) -> _Self:
         """Parse a URI reference from the given unicode URI string.
 
         :param str uri_string: Unicode URI to be parsed into a reference.
         :param str encoding: The encoding of the string provided
+        :param bool strict: Validate the original reference before automatic
+            percent-encoding.
         :returns: :class:`URIReference` or subclass thereof
         """
+        if strict:
+            from ._strict import validate_uri_reference
+
+            validate_uri_reference(uri_string, encoding)
+
         uri_string = compat.to_str(uri_string, encoding)
 
         split_uri = misc.URI_MATCHER.match(uri_string).groupdict()

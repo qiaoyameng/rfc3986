@@ -27,6 +27,9 @@ from .api import is_valid_uri
 from .api import normalize_uri
 from .api import uri_reference
 from .api import urlparse
+from .normalization import NormalizationProfile
+from .normalization import NormalizationResult
+from .normalization import NormalizationTransformation
 from .parseresult import ParseResult
 
 __title__ = "rfc3986"
@@ -38,6 +41,9 @@ __version__ = "2.0.0"
 
 __all__ = (
     "ParseResult",
+    "NormalizationProfile",
+    "NormalizationResult",
+    "NormalizationTransformation",
     "URIReference",
     "IRIReference",
     "is_valid_uri",

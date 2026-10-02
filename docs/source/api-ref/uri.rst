@@ -14,6 +14,8 @@
 
 .. automethod:: rfc3986.uri.URIReference.normalize
 
+.. automethod:: rfc3986.uri.URIReference.normalize_with
+
 .. automethod:: rfc3986.uri.URIReference.is_absolute
 
 .. automethod:: rfc3986.uri.URIReference.authority_info

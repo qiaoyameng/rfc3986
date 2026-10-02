@@ -22,6 +22,10 @@ from . import normalizers
 from ._mixin import URIMixin
 from ._typing_compat import Self as _Self
 
+if t.TYPE_CHECKING:
+    from .normalization import NormalizationProfile
+    from .normalization import NormalizationResult
+
 
 class URIReference(misc.URIReferenceBase, URIMixin):
     """Immutable object representing a parsed URI Reference.
@@ -146,6 +150,12 @@ class URIReference(misc.URIReferenceBase, URIMixin):
             normalizers.normalize_fragment(self.fragment),
             self.encoding,
         )
+
+    def normalize_with(
+        self, profile: "NormalizationProfile"
+    ) -> "NormalizationResult":
+        """Normalize this reference with an explicit profile."""
+        return profile.apply(self)
 
     @classmethod
     def from_string(

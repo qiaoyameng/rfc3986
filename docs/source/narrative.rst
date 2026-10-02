@@ -25,5 +25,6 @@ be able to seamlessly swap |rfc3986| for ``urlparse``.
     :maxdepth: 2
 
     user/parsing
+    user/normalizing
     user/validating
     user/building

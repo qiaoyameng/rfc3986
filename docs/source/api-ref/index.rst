@@ -11,6 +11,7 @@ can be utilized, please see :ref:`narrative` instead.
 
     api
     builder
+    normalization
     uri
     validators
     iri

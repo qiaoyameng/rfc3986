@@ -30,6 +30,12 @@ class InvalidPort(RFC3986Exception):
         super().__init__(f'The port ("{port}") is not valid.')
 
 
+class NormalizationProfileError(ValueError, RFC3986Exception):
+    """Exception when normalization profile rules conflict."""
+
+    pass
+
+
 class ResolutionError(RFC3986Exception):
     """Exception to indicate a failure to resolve a URI."""
 
